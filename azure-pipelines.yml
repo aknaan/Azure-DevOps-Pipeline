@@ -1,0 +1,114 @@
+trigger:
+- main
+
+pool: default
+
+variables:
+  buildConfiguration: 'Release'
+  major: 1
+  minor: 0
+  countPatch: $[counter(variables['minor'], 1)]
+  nugetVersion: '$(major).$(minor).$(countPatch)'
+
+
+jobs:
+- job: A
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  steps:
+
+# Restore dependencies
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'restore'
+      projects: '**/*.csproj'
+    displayName: 'Restore dependencies'
+
+# Build the project
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'build'
+      projects: '**/*.csproj'
+      arguments: '--configuration $(buildConfiguration)'
+    displayName: 'Build the project'
+
+# Pack the project into a NuGet package
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'pack'
+      packagesToPack: '**/*.csproj'
+      configuration: $(buildConfiguration)
+      outputDir: '$(Build.ArtifactStagingDirectory)'
+      versioningScheme: 'byEnvVar'
+      versionEnvVar: 'nugetVersion'
+    displayName: 'Pack the project into a NuGet package'
+  
+
+# Publish the package to Azure Artifacts
+  - task: NuGetCommand@2
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+      nuGetFeedType: 'internal'
+      publishVstsFeed: '4f35a0c3-9770-476b-b47f-c08d67fb6e62/6d1eb69f-9b35-4b23-9446-a1cdad00a94f'
+    displayName: 'Publish the package to Azure Artifacts'
+
+# Print the new version to the console
+  - script: |
+      echo "Build version: 1.0.$(Build.BuildId).$(patchVersion)"
+    displayName: 'Print New Version'
+
+- job: B
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+  steps:
+
+  - task: SonarQubePrepare@6
+    inputs:
+      SonarQube: 'sonarquve_testing'
+
+      scannerMode: 'MSBuild'
+      projectKey: 'First_Pipeline_First_Pipeline_AZAg3zzpSAQ0YqaAZSLi'
+
+# Build the project
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'build'
+      projects: '**/*.csproj'
+      arguments: '--configuration $(buildConfiguration)'
+    displayName: 'Build the project'
+
+  - task: SonarQubeAnalyze@6
+    inputs:
+      jdkversion: 'JAVA_HOME_17_X64'
+
+# Pack the project into a NuGet package
+  - task: DotNetCoreCLI@2
+    inputs:
+      command: 'pack'
+      packagesToPack: '**/*.csproj'
+      configuration: $(buildConfiguration)
+      outputDir: '$(Build.ArtifactStagingDirectory)'
+      versioningScheme: 'byEnvVar'
+      versionEnvVar: 'nugetVersion'
+    displayName: 'Pack the project into a NuGet package'
+    
+  - task: SonarQubePublish@6
+    inputs:
+      pollingTimeoutSec: '300'
+
+# Publish the package to Azure Artifacts
+  - task: NuGetCommand@2
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+      nuGetFeedType: 'internal'
+      publishVstsFeed: '4f35a0c3-9770-476b-b47f-c08d67fb6e62/6d1eb69f-9b35-4b23-9446-a1cdad00a94f'
+    displayName: 'Publish the package to Azure Artifacts'
+
+# Print the new version to the console
+  - script: |
+      echo "Build version: 1.0.$(Build.BuildId).$(patchVersion)"
+    displayName: 'Print New Version'
+
+  - task: SonarQubePublish@6
+    inputs:
+      pollingTimeoutSec: '300'
